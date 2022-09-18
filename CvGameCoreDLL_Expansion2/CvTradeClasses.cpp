@@ -2802,7 +2802,6 @@ int CvPlayerTrade::GetTradeConnectionResourceValueTimes100(const TradeConnection
 
 				int iValue = 0;
 
-				ResourceClassTypes eResourceClassBonus = (ResourceClassTypes)GC.getInfoTypeForString("RESOURCECLASS_BONUS");
 				for (int i = 0; i < GC.getNumResourceInfos(); i++)
 				{
 					ResourceTypes eResource = (ResourceTypes)i;
@@ -2817,7 +2816,7 @@ int CvPlayerTrade::GetTradeConnectionResourceValueTimes100(const TradeConnection
 							if (GET_PLAYER(pOriginCity->getOwner()).HasGlobalMonopoly(eResource) || GET_PLAYER(pDestCity->getOwner()).HasGlobalMonopoly(eResource))
 								bMonopoly = true;
 
-							if (eResourceClassBonus == eResourceClassCurrent)
+							if (RESOURCEUSAGE_BONUS == eResourceClassCurrent)
 								bIsBonus = true;
 						}
 						
@@ -2826,7 +2825,7 @@ int CvPlayerTrade::GetTradeConnectionResourceValueTimes100(const TradeConnection
 						{		
 							if (pOriginCity->IsHasResourceLocal(eResource, true) != pDestCity->IsHasResourceLocal(eResource, true))
 							{
-								iValue += (bMonopoly ? 2 : 1 ) * /*50 in CP, 10 in VP*/ GD_INT_GET(TRADE_ROUTE_DIFFERENT_RESOURCE_VALUE);
+								iValue += (bMonopoly ? 2 : 1 ) * /*50 in CP, 5 in VP*/ GD_INT_GET(TRADE_ROUTE_DIFFERENT_RESOURCE_VALUE);
 							}
 						}
 					}
@@ -7546,33 +7545,27 @@ void CvTradeAI::GetPrioritizedTradeRoutes(TradeConnectionList& aTradeConnectionL
 	CvCity* pOriginLoopCity = NULL;
 	for(pOriginLoopCity = m_pPlayer->firstCity(&iOriginCityLoop); pOriginLoopCity != NULL; pOriginLoopCity = m_pPlayer->nextCity(&iOriginCityLoop))
 	{
-		if(pOriginLoopCity != NULL)
-		{
-			pOriginLoopCity->SetTradePrioritySea(-1);
-			pOriginLoopCity->SetTradePriorityLand(-1);
-		}
+		pOriginLoopCity->SetTradePrioritySea(0);
+		pOriginLoopCity->SetTradePriorityLand(0);
 	}
-	//Let's store off values for 'good' trade unit cities to grab elsewhere. Uses the priority model (so 0 = best, 1 = second-best, etc.)
+
+	//Let's store off values for 'good' trade unit cities to grab elsewhere.
 	for (uint ui = 0; ui < aTradeConnectionList.size(); ui++)
 	{
-		int iX = aTradeConnectionList[ui].m_iOriginX;
-		int iY = aTradeConnectionList[ui].m_iOriginY;
+		CvCity* pCity = m_pPlayer->getCity(aTradeConnectionList[ui].m_iOriginID);
+		if (!pCity)
+			continue;
 
-		CvPlot* pPlot = GC.getMap().plot(iX, iY);
-		if(pPlot != NULL)
+		// 100 is highest prio
+		int iPrioPercent = ((aTradeConnectionList.size() - ui)*100)/aTradeConnectionList.size();
+
+		if(aTradeConnectionList[ui].m_eDomain == DOMAIN_SEA && pCity->GetTradePrioritySea() < iPrioPercent)
 		{
-			CvCity* pCity = pPlot->getPlotCity();
-			if(pCity != NULL && pCity->getOwner() == m_pPlayer->GetID())
-			{
-				if(aTradeConnectionList[ui].m_eDomain == DOMAIN_SEA && pCity->GetTradePrioritySea() == -1)
-				{
-					pCity->SetTradePrioritySea(ui);
-				}
-				else if(pCity->GetTradePriorityLand() == -1)
-				{
-					pCity->SetTradePriorityLand(ui);
-				}
-			}
+			pCity->SetTradePrioritySea(iPrioPercent);
+		}
+		else if(pCity->GetTradePriorityLand() < iPrioPercent)
+		{
+			pCity->SetTradePriorityLand(iPrioPercent);
 		}
 	}
 }

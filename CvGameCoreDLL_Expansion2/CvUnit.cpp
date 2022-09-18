@@ -7719,7 +7719,10 @@ bool CvUnit::canSentry(const CvPlot* pPlot) const
 //	--------------------------------------------------------------------------------
 int CvUnit::healRate(const CvPlot* pPlot) const
 {
-	VALIDATE_OBJECT
+	if (isDelayedDeath())
+		return 0;
+	if (!pPlot)
+		pPlot = plot();
 
 	const IDInfo* pUnitNode;
 	CvCity* pCity = pPlot->getPlotCity();
@@ -13673,8 +13676,6 @@ bool CvUnit::build(BuildTypes eBuild)
 			}
 		}
 
-		// wipe out all build progress also
-		pPlot->SilentlyResetAllBuildProgress();
 #if defined(MOD_CIV6_WORKER)
 		if(!MOD_CIV6_WORKER)
 			bFinished = pPlot->changeBuildProgress(eBuild, iWorkRateWithMoves, getOwner());
@@ -24878,7 +24879,12 @@ void CvUnit::testPromotionReady()
 bool CvUnit::isDelayedDeath() const
 {
 	VALIDATE_OBJECT
-	return m_bDeathDelay || !m_pUnitInfo; //check m_pUnitInfo as a failsafe ...
+
+	//some failsafes on top ...
+	if (!m_pUnitInfo || !onMap())
+		return true;
+
+	return m_bDeathDelay;
 }
 
 //	--------------------------------------------------------------------------------
