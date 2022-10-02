@@ -3228,13 +3228,26 @@ int CvPlot::GetEffectiveFlankingBonus(const CvUnit* pUnit, const CvUnit* pOtherU
 	const CvPlot* pOtherPlot = pOtherUnitPlot ? pOtherUnitPlot : pOtherUnit->plot();
 
 	//our units are the enemy's enemies ...
-	int iNumUnitsAdjacentToOther = pOtherPlot->GetNumEnemyUnitsAdjacent( pOtherUnit->getTeam(), pOtherUnit->getDomainType(), pUnit);
-	int iNumUnitsAdjacentToHere = GetNumEnemyUnitsAdjacent( pUnit->getTeam(), pUnit->getDomainType(), pOtherUnit);
+	int iNumUnitsAdjacentToOther = pOtherPlot->GetNumEnemyUnitsAdjacent( pOtherUnit->getTeam(), pOtherUnit->getDomainType(), pUnit, true);
+	int iNumUnitsAdjacentToHere = GetNumEnemyUnitsAdjacent( pUnit->getTeam(), pUnit->getDomainType(), pOtherUnit, true);
 
 	if (iNumUnitsAdjacentToOther > iNumUnitsAdjacentToHere)
 		return (pUnit->GetFlankAttackModifier() + /*10*/ GD_INT_GET(BONUS_PER_ADJACENT_FRIEND)) * (iNumUnitsAdjacentToOther - iNumUnitsAdjacentToHere);
 
 	return 0;
+}
+
+int CvPlot::GetEffectiveFlankingBonusAtRange(const CvUnit* pAttackingUnit, const CvUnit* pDefendingUnit) const
+{
+	// note that this plot is the plot that the ranged unit is ATTACKING, not the plot that the ranged unit is located
+	
+	if (!pAttackingUnit || !pDefendingUnit)
+		return 0;
+
+	// ranged units can't get flanked when they attack, but their target can be
+	int iNumUnitsAdjacentToHere = GetNumEnemyUnitsAdjacent( pDefendingUnit->getTeam(), pDefendingUnit->getDomainType(), pAttackingUnit, true);
+
+	return (pAttackingUnit->GetFlankAttackModifier() + /*10*/ GD_INT_GET(BONUS_PER_ADJACENT_FRIEND)) * (iNumUnitsAdjacentToHere);
 }
 
 
@@ -4482,6 +4495,13 @@ bool CvPlot::isVisibleEnemyUnit(PlayerTypes ePlayer) const
 	{
 		do
 		{
+			//performance optimization, avoid unit lookup if same player
+			if (pUnitNode->eOwner == ePlayer)
+			{
+				pUnitNode = m_units.next(pUnitNode);
+				continue;
+			}
+
 			const CvUnit* pLoopUnit = GetPlayerUnit(*pUnitNode);
 			pUnitNode = m_units.next(pUnitNode);
 
@@ -4515,6 +4535,13 @@ bool CvPlot::isVisibleEnemyUnit(const CvUnit* pUnit) const
 
 		do
 		{
+			//performance optimization, avoid unit lookup if same player
+			if (pUnitNode->eOwner == pUnit->getOwner())
+			{
+				pUnitNode = m_units.next(pUnitNode);
+				continue;
+			}
+
 			const CvUnit* pLoopUnit = GetPlayerUnit(*pUnitNode);
 			pUnitNode = m_units.next(pUnitNode);
 
@@ -6387,8 +6414,9 @@ bool CvPlot::isBlockaded(PlayerTypes eForPlayer)
 		//landmass change is equivalent to domain change
 		if (pNeighbor && pNeighbor->getLandmass() == getLandmass())
 		{
+			CvUnit* pEnemy = pNeighbor->getBestDefender(NO_PLAYER, eForPlayer, NULL, true, true);
 			//no halo around embarked units
-			if (pNeighbor->isEnemyUnit(eForPlayer, true, false, false, true))
+			if (pEnemy && pEnemy->isNativeDomain(pNeighbor) && pEnemy->canEndTurnAtPlot(this))
 				return true;
 		}
 	}
@@ -14750,7 +14778,7 @@ pair<int,int> CvPlot::GetLocalUnitPower(PlayerTypes ePlayer, int iRange, bool bS
 	return make_pair(iFriendlyPower,iEnemyPower);
 }
 
-int CvPlot::GetNumEnemyUnitsAdjacent(TeamTypes eMyTeam, DomainTypes eDomain, const CvUnit* pUnitToExclude, bool bCountRanged) const
+int CvPlot::GetNumEnemyUnitsAdjacent(TeamTypes eMyTeam, DomainTypes eDomain, const CvUnit* pUnitToExclude, bool bConsiderFlanking) const
 {
 	int iNumEnemiesAdjacent = 0;
 
@@ -14774,9 +14802,6 @@ int CvPlot::GetNumEnemyUnitsAdjacent(TeamTypes eMyTeam, DomainTypes eDomain, con
 					// Must be a combat Unit
 					if(pLoopUnit->IsCombatUnit() && !pLoopUnit->isEmbarked())
 					{
-						if (pLoopUnit->IsCanAttackRanged() && !bCountRanged)
-							continue;
-
 						TeamTypes eTheirTeam = pLoopUnit->getTeam();
 
 						// This team which this unit belongs to must be at war with us
@@ -14785,7 +14810,7 @@ int CvPlot::GetNumEnemyUnitsAdjacent(TeamTypes eMyTeam, DomainTypes eDomain, con
 							// Must be same domain
 							if (pLoopUnit->getDomainType() == eDomain || pLoopUnit->getDomainType() == DOMAIN_HOVER || eDomain == NO_DOMAIN)
 							{
-								iNumEnemiesAdjacent++;
+								iNumEnemiesAdjacent += bConsiderFlanking ? pLoopUnit->GetFlankPower() : 1;
 							}
 						}
 					}
@@ -14797,7 +14822,7 @@ int CvPlot::GetNumEnemyUnitsAdjacent(TeamTypes eMyTeam, DomainTypes eDomain, con
 	return iNumEnemiesAdjacent;
 }
 
-int CvPlot::GetNumFriendlyUnitsAdjacent(TeamTypes eMyTeam, DomainTypes eDomain, const CvUnit* pUnitToExclude, bool bCountRanged) const
+int CvPlot::GetNumFriendlyUnitsAdjacent(TeamTypes eMyTeam, DomainTypes eDomain, const CvUnit* pUnitToExclude) const
 {
 	int iNumFriendliesAdjacent = 0;
 
@@ -14821,9 +14846,6 @@ int CvPlot::GetNumFriendlyUnitsAdjacent(TeamTypes eMyTeam, DomainTypes eDomain, 
 					// Must be a combat Unit
 					if(pLoopUnit->IsCombatUnit() && !pLoopUnit->isEmbarked())
 					{
-						if (pLoopUnit->IsCanAttackRanged() && !bCountRanged)
-							continue;
-
 						// Same team?
 						if(pLoopUnit->getTeam() == eMyTeam)
 						{

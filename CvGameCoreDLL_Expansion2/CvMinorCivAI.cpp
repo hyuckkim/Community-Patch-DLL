@@ -339,8 +339,8 @@ void CvMinorCivQuest::CalculateRewards(PlayerTypes ePlayer, bool bRecalc)
 	{
 		if (ePersonality == MINOR_CIV_PERSONALITY_IRRATIONAL)
 		{
-			iRandomContribution += GC.getGame().getSmallFakeRandNum(pkSmallAwardInfo->GetRandom(), kPlayer.GetPseudoRandomSeed() + m_eType + 1) * 2;
-			iRandomContribution -= GC.getGame().getSmallFakeRandNum(pkSmallAwardInfo->GetRandom(), kPlayer.GetPseudoRandomSeed() + m_eType - 1) * 2;
+			iRandomContribution += GC.getGame().getSmallFakeRandNum(pkSmallAwardInfo->GetRandom(), kPlayer.GetPseudoRandomSeed() + m_eType) * 2;
+			iRandomContribution -= GC.getGame().getSmallFakeRandNum(pkSmallAwardInfo->GetRandom(), pMinor->GetPseudoRandomSeed() + m_eType) * 2;
 		}
 		else
 		{
@@ -5532,7 +5532,7 @@ void CvMinorCivAI::DoAddStartingResources(CvPlot* pCityPlot)
 }
 
 /// Notifications
-void CvMinorCivAI::AddNotification(CvString sString, CvString sSummaryString, PlayerTypes ePlayer, int iX, int iY)
+void CvMinorCivAI::AddNotification(const CvString& sString, const CvString& sSummaryString, PlayerTypes ePlayer, int iX, int iY)
 {
 	if(iX == -1 && iY == -1)
 	{
@@ -5553,7 +5553,7 @@ void CvMinorCivAI::AddNotification(CvString sString, CvString sSummaryString, Pl
 }
 
 /// Quest Notifications
-void CvMinorCivAI::AddQuestNotification(CvString sString, CvString sSummaryString, PlayerTypes ePlayer, int iX, int iY, bool bNewQuest)
+void CvMinorCivAI::AddQuestNotification(CvString sString, const CvString& sSummaryString, PlayerTypes ePlayer, int iX, int iY, bool bNewQuest)
 {
 	CvNotifications* pNotifications = GET_PLAYER(ePlayer).GetNotifications();
 	if(pNotifications)
@@ -6074,7 +6074,7 @@ void CvMinorCivAI::DoTestStartGlobalQuest()
 	}
 
 	// There are valid quests, so pick one at random
-	int iRandSeed = GetNumActiveGlobalQuests() + m_pPlayer->getGlobalAverage(YIELD_CULTURE) + m_pPlayer->getGlobalAverage(YIELD_SCIENCE);
+	int iRandSeed = GetNumActiveGlobalQuests() + m_pPlayer->GetPseudoRandomSeed() + GC.getGame().GetCultureMedian() + GC.getGame().GetScienceMedian();
 	int iRandIndex = GC.getGame().getSmallFakeRandNum(veValidQuests.size(), iRandSeed);
 	eQuest = veValidQuests[iRandIndex];
 
@@ -8780,7 +8780,7 @@ CvPlot* CvMinorCivAI::GetBestNearbyCampToKill()
 			if(pLoopPlot != NULL)
 			{
 				// Camp must be in the same landmass
-				if(!pCapital->HasAccessToLandmass(pLoopPlot->getLandmass()))
+				if(pCapital->plot()->getLandmass() != pLoopPlot->getLandmass())
 				{
 					continue;
 				}
@@ -9336,6 +9336,7 @@ BuildingTypes CvMinorCivAI::GetBestWonderForQuest(PlayerTypes ePlayer)
 	int iCompletionThreshold = /*25*/ GD_INT_GET(MINOR_CIV_QUEST_WONDER_COMPLETION_THRESHOLD);
 	bool bFoundWonderTooFarAlong;
 
+	std::vector<int> allBuildingCount = GET_PLAYER(ePlayer).GetTotalBuildingCount();
 	// Loop through all Buildings and see if they're useful
 	for(int iBuildingLoop = 0; iBuildingLoop < GC.getNumBuildingInfos(); iBuildingLoop++)
 	{
@@ -9355,7 +9356,7 @@ BuildingTypes CvMinorCivAI::GetBestWonderForQuest(PlayerTypes ePlayer)
 		}
 
 		// Must be able to build it
-		if(!GET_PLAYER(ePlayer).canConstruct(eBuilding))
+		if(!GET_PLAYER(ePlayer).canConstruct(eBuilding,allBuildingCount))
 		{
 			continue;
 		}
@@ -9414,6 +9415,7 @@ BuildingTypes CvMinorCivAI::GetBestNationalWonderForQuest(PlayerTypes ePlayer)
 
 	int iWorldPlayerLoop;
 	PlayerTypes eWorldPlayer;
+	std::vector<int> allBuildingCount = GET_PLAYER(ePlayer).GetTotalBuildingCount();
 
 	// Loop through all Buildings and see if they're useful
 	for(int iBuildingLoop = 0; iBuildingLoop < GC.getNumBuildingInfos(); iBuildingLoop++)
@@ -9457,7 +9459,7 @@ BuildingTypes CvMinorCivAI::GetBestNationalWonderForQuest(PlayerTypes ePlayer)
 #endif
 
 		// Must be able to build it
-		if(!GET_PLAYER(ePlayer).canConstruct(eBuilding))
+		if(!GET_PLAYER(ePlayer).canConstruct(eBuilding,allBuildingCount))
 		{
 			continue;
 		}
@@ -9938,6 +9940,8 @@ BuildingTypes CvMinorCivAI::GetBestBuildingForQuest(PlayerTypes ePlayer)
 		return NO_BUILDING;
 	}
 
+	std::vector<int> allBuildingCount = GET_PLAYER(ePlayer).GetTotalBuildingCount();
+
 	// Loop through all Buildings and see if they're useful
 	for(int iBuildingLoop = 0; iBuildingLoop < GC.getNumBuildingInfos(); iBuildingLoop++)
 	{
@@ -9966,13 +9970,10 @@ BuildingTypes CvMinorCivAI::GetBestBuildingForQuest(PlayerTypes ePlayer)
 		bool bBad = false;
 		for (CvCity* pLoopCity = GET_PLAYER(ePlayer).firstCity(&iLoopCity, true); pLoopCity != NULL; pLoopCity = GET_PLAYER(ePlayer).nextCity(&iLoopCity, true))
 		{
-			if(pLoopCity != NULL)
+			if(!pLoopCity->canConstruct(eBuilding,allBuildingCount))
 			{
-				if(!pLoopCity->canConstruct(eBuilding))
-				{
-					bBad = true;
-					break;
-				}
+				bBad = true;
+				break;
 			}
 		}
 		// Must be able to build it in all cities.
