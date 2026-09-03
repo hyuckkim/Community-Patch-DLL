@@ -280,7 +280,7 @@ def generate_ast():
     print('generating AST...')
     start_time = time.time()
     
-    build_dir = PROJECT_DIR / BUILD_DIR
+    build_dir = PROJECT_DIR / BUILD_DIR[Config.Debug]
     ast_dir = build_dir / 'ast'
     ast_dir.mkdir(parents=True, exist_ok=True)
     
