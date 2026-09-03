@@ -1,0 +1,230 @@
+name: Build-standalone
+on:
+  workflow_run:
+    workflows: ["Build"]
+    types: [completed]
+
+jobs:
+  build-clang:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: |
+            ./wget
+            ./SDK7
+            ./SDK7.1
+          key: ${{ runner.os }}-sdks-wget-1.21.3-sdk7.0sp1-sdk7.1-v4
+          restore-keys: |
+            ${{ runner.os }}-sdks-wget-1.21.3-sdk7.0sp1-sdk7.1-
+            ${{ runner.os }}-sdks-
+
+      - name: Install SDKs
+        run: |
+          echo "Installing SDKs..."
+          Start-Process -FilePath ".\SDK7\Setup\WinSDK\WinSDK_x86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7\Setup\WinSDKBuild\WinSDKBuild_x86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7\Setup\WinSDKInterop\WinSDKInterop_x86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7\Setup\WinSDKTools\WinSDKTools_x86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7\Setup\WinSDKWin32Tools\WinSDKWin32Tools_x86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7\Setup\vc_stdx86\vc_stdx86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7\Setup\vc_stdamd64\vc_stdamd64.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7\Setup\winsdk_intellidocs\winsdk_intellidocs.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7\Setup\WinSDKNetFxTools\WinSDK_nfxtoolsm_x86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7.1\Setup\WinSDK\WinSDK_x86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7.1\Setup\WinSDKBuild\WinSDKBuild_x86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7.1\Setup\WinSDKInterop\WinSDKInterop_x86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7.1\Setup\WinSDKTools\WinSDKTools_x86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7.1\Setup\WinSDKWin32Tools\WinSDKWin32Tools_x86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7.1\Setup\vc_stdx86\vc_stdx86.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7.1\Setup\vc_stdamd64\vc_stdamd64.msi" -ArgumentList "/qn" -Wait
+          Start-Process -FilePath ".\SDK7.1\Setup\WinSDKNetFxTools\WinSDK_nfxtoolsm_x86.msi" -ArgumentList "/qn" -Wait
+          echo "SDKs installation complete."
+
+      - name: Clang version check
+        run: clang --version
+
+      - name: Run debug build
+        run: python build_vp_clang_sdk.py --config debug
+
+      - name: Display debug build log
+        run: cat clang-output/Debug/build.log
+
+      - name: Run release build
+        run: python build_vp_clang_sdk.py --config release
+
+      - name: Display release build log
+        run: cat clang-output/Release/build.log
+
+      - name: Analyze Clang build warnings and errors
+        if: always()
+        shell: pwsh
+        run: |
+          echo "Analyzing Clang build logs for warnings and errors..."
+          
+          # Function to parse Clang build log and create GitHub annotations
+          function Parse-ClangBuildLog {
+            param($LogFile, $BuildType)
+            
+            if (Test-Path $LogFile) {
+              $content = Get-Content $LogFile
+              $warnings = @()
+              $errors = @()
+              
+              echo "[$BuildType] Processing $($content.Count) lines from $LogFile"
+              
+              foreach ($line in $content) {
+                # Match Clang warning pattern (MSVC-style): filename(line,col) : warning: message
+                if ($line -match '([^(]+)\((\d+),(\d+)\)\s*:\s*warning:\s*(.+)') {
+                  $file = $matches[1] -replace '.*[/\\]', ''  # Get just filename
+                  $lineNum = $matches[2]
+                  $col = $matches[3]
+                  $message = $matches[4]
+                  
+                  # Skip "unknown warning option" warnings as requested
+                  if ($message -match "unknown warning option.*-Wno-enum-constexpr-conversion") {
+                    continue
+                  }
+                  
+                  $warnings += @{
+                    File = $file
+                    Line = $lineNum
+                    Column = $col
+                    Message = $message
+                    FullLine = $line
+                  }
+                  
+                  # Create GitHub annotation
+                  Write-Host "::warning file=$file,line=$lineNum,col=$col::[$BuildType] $message"
+                }
+                
+                # Match Clang error pattern (MSVC-style): filename(line,col) : error: message
+                if ($line -match '([^(]+)\((\d+),(\d+)\)\s*:\s*error:\s*(.+)') {
+                  $file = $matches[1] -replace '.*[/\\]', ''
+                  $lineNum = $matches[2]
+                  $col = $matches[3]
+                  $message = $matches[4]
+                  
+                  $errors += @{
+                    File = $file
+                    Line = $lineNum
+                    Column = $col
+                    Message = $message
+                    FullLine = $line
+                  }
+                  
+                  # Create GitHub annotation
+                  Write-Host "::error file=$file,line=$lineNum,col=$col::[$BuildType] $message"
+                }
+                
+                # Also match standard Clang format: filename:line:col: warning: message
+                if ($line -match '([^:]+):(\d+):(\d+):\s*warning:\s*(.+)' -and $line -notmatch '\(.*\)') {
+                  $file = $matches[1] -replace '.*[/\\]', ''
+                  $lineNum = $matches[2]
+                  $col = $matches[3]
+                  $message = $matches[4]
+                  
+                  # Skip "unknown warning option" warnings as requested
+                  if ($message -match "unknown warning option.*-Wno-enum-constexpr-conversion") {
+                    continue
+                  }
+                  
+                  $warnings += @{
+                    File = $file
+                    Line = $lineNum
+                    Column = $col
+                    Message = $message
+                    FullLine = $line
+                  }
+                  
+                  # Create GitHub annotation
+                  Write-Host "::warning file=$file,line=$lineNum,col=$col::[$BuildType] $message"
+                }
+                
+                # Also match standard Clang error format: filename:line:col: error: message
+                if ($line -match '([^:]+):(\d+):(\d+):\s*error:\s*(.+)' -and $line -notmatch '\(.*\)') {
+                  $file = $matches[1] -replace '.*[/\\]', ''
+                  $lineNum = $matches[2]
+                  $col = $matches[3]
+                  $message = $matches[4]
+                  
+                  $errors += @{
+                    File = $file
+                    Line = $lineNum
+                    Column = $col
+                    Message = $message
+                    FullLine = $line
+                  }
+                  
+                  # Create GitHub annotation
+                  Write-Host "::error file=$file,line=$lineNum,col=$col::[$BuildType] $message"
+                }
+                
+                # Also catch general warning/error lines without file location
+                if ($line -match 'warning:' -and $line -notmatch ':\d+:\d+:') {
+                  Write-Host "::warning::[$BuildType] $line"
+                }
+                if ($line -match 'error:' -and $line -notmatch ':\d+:\d+:') {
+                  Write-Host "::error::[$BuildType] $line"
+                }
+              }
+              
+              echo "[$BuildType] Found $($warnings.Count) warnings and $($errors.Count) errors"
+              return @{ Warnings = $warnings; Errors = $errors }
+            } else {
+              echo "Build log not found: $LogFile"
+              return @{ Warnings = @(); Errors = @() }
+            }
+          }
+          
+          # Parse both Clang build logs
+          echo "Checking for Clang build logs..."
+          if (Test-Path "clang-output/Debug/build.log") {
+            echo "Found Clang Debug log, parsing..."
+            $debugResults = Parse-ClangBuildLog "clang-output/Debug/build.log" "Clang Debug"
+          } else {
+            echo "Clang Debug log not found at clang-output/Debug/build.log"
+            $debugResults = @{ Warnings = @(); Errors = @() }
+          }
+          
+          if (Test-Path "clang-output/Release/build.log") {
+            echo "Found Clang Release log, parsing..."
+            $releaseResults = Parse-ClangBuildLog "clang-output/Release/build.log" "Clang Release"
+          } else {
+            echo "Clang Release log not found at clang-output/Release/build.log"
+            $releaseResults = @{ Warnings = @(); Errors = @() }
+          }
+          
+          # Output summary
+          $totalWarnings = $debugResults.Warnings.Count + $releaseResults.Warnings.Count
+          $totalErrors = $debugResults.Errors.Count + $releaseResults.Errors.Count
+          
+          echo "Clang Build Analysis Complete:"
+          echo "- Total Warnings: $totalWarnings"
+          echo "- Total Errors: $totalErrors"
+          echo "- Debug Warnings: $($debugResults.Warnings.Count)"
+          echo "- Debug Errors: $($debugResults.Errors.Count)"
+          echo "- Release Warnings: $($releaseResults.Warnings.Count)"
+          echo "- Release Errors: $($releaseResults.Errors.Count)"
+          
+          # Fail the build if there are errors
+          if ($totalErrors -gt 0) {
+            Write-Error "Build failed with $totalErrors error(s). Check annotations above for details."
+            exit 1
+          }
+
+      - name: Create debug artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VP_Clang_Debug_${{ needs.get-version.outputs.version }}
+          path: 'clang-output\Debug'
+
+      - name: Create release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VP_Clang_Release_${{ needs.get-version.outputs.version }}
+          path: 'clang-output\Release'
