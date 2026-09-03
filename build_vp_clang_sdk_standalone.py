@@ -276,19 +276,21 @@ def set_environment():
     os.environ['LIB'] = f'{sdk_path}\\Lib;{vs_path}\\lib'
     os.environ['PATH'] = f'{sdk_path}\\Bin;{vs_path}\\bin;' + os.environ['PATH']
 
-def generate_ast():
+def generate_ast(config: Config = Config.Debug):
     print('generating AST...')
     start_time = time.time()
     
-    build_dir = PROJECT_DIR / BUILD_DIR[Config.Debug]
+    build_dir = PROJECT_DIR / BUILD_DIR[config]
     ast_dir = build_dir / 'ast'
     ast_dir.mkdir(parents=True, exist_ok=True)
+    
+    cl_args = ' '.join(build_cl_config_args(config))
     
     for cpp in CPP:
         src = PROJECT_DIR / cpp
         ast_file = ast_dir / (Path(cpp).with_suffix('.ast'))
-        
-        cmd = f'clang-cl.exe "{src}" -Xclang -ast-dump'
+
+        cmd = f'clang-cl.exe "{src}" {cl_args} -Xclang -ast-dump'
         cp = subprocess.run(cmd, capture_output=True, shell=True)
         
         if cp.returncode != 0:
@@ -300,7 +302,7 @@ def generate_ast():
     
     end_time = time.time()
     print(f'AST generation finished after {end_time - start_time} seconds')
-
+    
 if __name__ == '__main__':
     set_environment()
     generate_ast()
