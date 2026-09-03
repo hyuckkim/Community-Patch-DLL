@@ -275,6 +275,26 @@ def set_environment():
     os.environ['INCLUDE'] = f'{sdk_path}\\Include;{vs_path}\\include'
     os.environ['LIB'] = f'{sdk_path}\\Lib;{vs_path}\\lib'
     os.environ['PATH'] = f'{sdk_path}\\Bin;{vs_path}\\bin;' + os.environ['PATH']
+    
+def build_cl_config_args(config: Config) -> list[str]:
+    args = ['-m32', '-msse3', '/c', '/MD', '/GS', '/EHsc', '/fp:precise', '/Zc:wchar_t', '/Zi', '/FS']
+    if config == Config.Release:
+        args.append('/Ox')
+        args.append('/Ob2')
+        args.append('/Zo')
+        args.append('-flto')
+    else:
+        args.append('/Od')
+        args.append('/Oy-')
+    for predef in PREDEFS[config]:
+        args.append(f'/D{predef}')
+    for include_dir in INCLUDE_DIRS:
+        args.append(f'/I"{os.path.join(PROJECT_DIR, include_dir)}"')
+    for include_path in INCLUDE_PATHS:
+        args.append(f'-external:I"{include_path}"')
+    for suppress in CL_SUPPRESS:
+        args.append(f'-Wno-{suppress}')
+    return args
 
 def generate_ast(config: Config = Config.Debug):
     print('generating AST...')
