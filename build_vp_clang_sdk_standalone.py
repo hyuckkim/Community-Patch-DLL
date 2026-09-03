@@ -317,6 +317,7 @@ def generate_ast(config: Config = Config.Debug):
             print(f'AST dump failed for {src}')
             continue
         
+        os.makedirs(os.path.dirname(ast_file), exist_ok=True)
         with open(ast_file, 'wb') as f:
             f.write(cp.stdout)
     
