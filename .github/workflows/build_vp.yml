@@ -128,6 +128,7 @@ jobs:
 
       - name: Download Windows SDK 7.0 SP1 and 7.1
         if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           echo "Downloading SDKs..."
           wget --server-response -O ./sdk7.iso --tries=1 --timeout=120 https://web.archive.org/web/20161230154527/http://download.microsoft.com/download/2/E/9/2E911956-F90F-4BFB-8231-E292A7B6F287/GRMSDK_EN_DVD.iso
