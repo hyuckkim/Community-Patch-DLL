@@ -49,7 +49,7 @@ jobs:
         run: clang --version
         
       - name: Run AST generation
-        run: python vp_build_clang_sdk_standalone.py --config debug
+        run: python build_vp_clang_sdk_standalone.py --config debug
 
       - name: Display AST generation log
         run: cat clang-build\Debug\ast\build.log
