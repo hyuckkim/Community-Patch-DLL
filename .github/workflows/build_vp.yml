@@ -115,10 +115,7 @@ jobs:
             ./wget
             ./SDK7
             ./SDK7.1
-          key: ${{ runner.os }}-sdks-wget-1.21.3-sdk7.0sp1-sdk7.1-v1
-          restore-keys: |
-            ${{ runner.os }}-sdks-wget-1.21.3-sdk7.0sp1-sdk7.1-
-            ${{ runner.os }}-sdks-
+          key: ${{ runner.os }}-sdks-wget-1.21.3-sdk7.0sp1-sdk7.1-v2
 
       - name: Install wget
         if: steps.cache.outputs.cache-hit != 'true'
