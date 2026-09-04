@@ -1,7 +1,7 @@
 name: Build-standalone
 on:
   workflow_run:
-    workflows: ["Build"]
+    workflows: ["Build-Setup"]
     types: [completed]
   workflow_dispatch:
 
