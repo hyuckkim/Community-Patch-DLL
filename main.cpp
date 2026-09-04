@@ -23,12 +23,12 @@ int main(int argc, char** argv)
 
   std::cout << "prase save..." << std::endl;
   try {
-    game.Read(&stream);
+    game.Read(stream);
   } catch (const std::exception& e) {
     std::cerr << "Read failed: " << e.what() << '\n';
     return 1;
   }
-  catch {
+  catch (...) {
     std::cerr << "Read failed: unknown exception\n";
     return 1;
   }
