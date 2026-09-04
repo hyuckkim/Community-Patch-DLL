@@ -57,13 +57,25 @@ jobs:
         shell: cmd
         run: |
           if exist clang-output\Debug\build.log (
-            echo ==================== BUILD LOG ====================
             type clang-output\Debug\build.log
-            echo ================== END BUILD LOG ==================
           ) else (
             echo Build log does not exist.
           )
-         
+
+
+      - name: Run release
+        run: python build_vp_clang_standalone.py --config release
+
+      - name: Print build log
+        if: always()
+        shell: cmd
+        run: |
+          if exist clang-output\Release\build.log (
+            type clang-output\Release\build.log
+          ) else (
+            echo Build log does not exist.
+          )
+
       - name: Check output
         shell: cmd
         run: |
@@ -72,5 +84,11 @@ jobs:
       - name: Create debug artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VP_Clang_Debug_${{ needs.get-version.outputs.version }}
+          name: VP_Clang_Debug
           path: 'clang-output\Debug'
+
+      - name: Create release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VP_Clang_Release
+          path: 'clang-output\Release'
