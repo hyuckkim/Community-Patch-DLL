@@ -52,6 +52,18 @@ jobs:
       - name: Run standalone
         run: python build_vp_clang_standalone.py --config debug
 
+      - name: Print build log
+        if: always()
+        shell: cmd
+        run: |
+          if exist clang-output\Debug\build.log (
+            echo ==================== BUILD LOG ====================
+            type clang-output\Debug\build.log
+            echo ================== END BUILD LOG ==================
+          ) else (
+            echo Build log does not exist.
+          )
+         
       - name: Check output
         shell: cmd
         run: |
