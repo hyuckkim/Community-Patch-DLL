@@ -268,6 +268,8 @@ CPP = [
     'CvGameCoreDLL_Expansion2\\CvWorldBuilderMapLoader.cpp',
     'CvGameCoreDLL_Expansion2\\SqliteLogger.cpp',
 
+    'stub/FDataStream.cpp',
+    'stub/FFileStream.cpp',
     'main.cpp',
 ]
 
