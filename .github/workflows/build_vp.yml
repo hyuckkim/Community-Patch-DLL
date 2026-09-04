@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
   
   build-clang:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: windows-2022
     steps:
       - name: Checkout code
@@ -231,7 +230,6 @@ on:
           path: 'clang-output\Release'
 
   build-msvc:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: windows-2022
     steps:
       - name: Checkout code
