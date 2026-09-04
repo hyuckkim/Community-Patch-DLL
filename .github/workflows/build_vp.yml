@@ -1,11 +1,14 @@
 name: Build-VP
+
 on:
   workflow_run:
     workflows: ["Build-Setup"]
     types: [completed]
   workflow_dispatch:
-  
+
+jobs:
   build-clang:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: windows-2022
     steps:
       - name: Checkout code
@@ -230,6 +233,7 @@ on:
           path: 'clang-output\Release'
 
   build-msvc:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: windows-2022
     steps:
       - name: Checkout code
