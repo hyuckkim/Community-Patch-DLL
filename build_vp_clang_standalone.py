@@ -267,15 +267,63 @@ CPP = [
     'CvGameCoreDLL_Expansion2\\CvWonderProductionAI.cpp',
     'CvGameCoreDLL_Expansion2\\CvWorldBuilderMapLoader.cpp',
     'CvGameCoreDLL_Expansion2\\SqliteLogger.cpp',
+
+    'main.cpp',
 ]
 
-def set_environment():
-    sdk_path = rf'C:\Program Files (x86)\Microsoft SDKs\Windows\v{SDK_VERSION}'
+class TaskResult:
+    commands: typing.Union[str, list[str]]
+    returncode: int
+    
+    def __init__(self, commands: typing.Union[str, list[str]]):
+        self.commands = commands
+        self.returncode = None
+
+class Task:
+    proc: subprocess.Popen
+    result: TaskResult
+    def __init__(self, commands: typing.Union[str, list[str]], env: typing.Optional[dict[str, str]]=None, shell: bool=False, log:any =None):
+        self.proc = subprocess.Popen(commands, stdout=log, stderr=log, env=env, shell=shell)
+        self.result = TaskResult(commands)
+
+    def poll(self) -> typing.Optional[TaskResult]:
+        if (returncode := self.proc.poll()) != None:
+            self.result.returncode = returncode
+            return self.result
+        else:
+            return None
+
+class TaskMan:
+    pending: Queue
+    def __init__(self):
+        self.pending = Queue()
+
+    def spawn(self, commands: typing.Union[str, list[str]], env: typing.Optional[dict[str, str]]=None, shell: bool=False, log:any =None):
+        task = Task(commands, env=env, shell=shell, log=log)
+        self.pending.put(task)
+
+    def wait(self) -> list[TaskResult]:
+        results: list[TaskResult] = []
+        while not self.pending.empty():
+            task = self.pending.get()
+            if result := task.poll():
+                results.append(result)
+            else:
+                self.pending.put(task)
+        return results
+        
+def set_environment(sdk_version: str):
+    sdk_path = rf'C:\Program Files (x86)\Microsoft SDKs\Windows\v{sdk_version}'
     vs_path = r'C:\Program Files (x86)\Microsoft Visual Studio 9.0\VC'
     os.environ['INCLUDE'] = f'{sdk_path}\\Include;{vs_path}\\include'
     os.environ['LIB'] = f'{sdk_path}\\Lib;{vs_path}\\lib'
     os.environ['PATH'] = f'{sdk_path}\\Bin;{vs_path}\\bin;' + os.environ['PATH']
-    
+
+def print_environment():
+    print("INCLUDE:", os.environ.get('INCLUDE', 'Not Set'))
+    print("LIB:", os.environ.get('LIB', 'Not Set'))
+    print("PATH:", os.environ.get('PATH', 'Not Set'))
+
 def build_cl_config_args(config: Config) -> list[str]:
     args = ['-m32', '-msse3', '/c', '/MD', '/GS', '/EHsc', '/fp:precise', '/Zc:wchar_t', '/Zi', '/FS']
     if config == Config.Release:
@@ -296,34 +344,164 @@ def build_cl_config_args(config: Config) -> list[str]:
         args.append(f'-Wno-{suppress}')
     return args
 
-def generate_ast(config: Config = Config.Debug):
-    print('generating AST...')
-    start_time = time.time()
-    
-    build_dir = PROJECT_DIR / BUILD_DIR[config]
-    ast_dir = build_dir / 'ast'
-    ast_dir.mkdir(parents=True, exist_ok=True)
-    
-    cl_args = ' '.join(build_cl_config_args(config))
-    
-    for cpp in CPP:
-        src = PROJECT_DIR / cpp
-        ast_file = ast_dir / (Path(cpp).with_suffix('.ast'))
+def build_link_config_args(config: Config) -> list[str]:
+    args = ['/MACHINE:x86', '/SUBSYSTEM:CONSOLE', '/DEBUG', '/LTCG', '/DYNAMICBASE', '/NXCOMPAT', '/MANIFEST:EMBED', '/FORCE:MULTIPLE']
+    if config == Config.Release:
+        args += ['/OPT:REF', '/OPT:ICF']
+    return args
 
-        cmd = f'clang-cl.exe "{src}" {cl_args} -Xclang -ast-dump'
-        cp = subprocess.run(cmd, capture_output=True, shell=True)
-        
-        if cp.returncode != 0:
-            print(f'AST dump failed for {src}')
-            continue
-        
-        os.makedirs(os.path.dirname(ast_file), exist_ok=True)
-        with open(ast_file, 'wb') as f:
-            f.write(cp.stdout)
-    
+def prepare_dirs(build_dir: Path, out_dir: Path):
+    build_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for cpp in CPP:
+        cpp_dir = build_dir.joinpath(Path(cpp).parent)
+        cpp_dir.mkdir(parents=True, exist_ok=True)
+
+def build_clang_cpp(cl: str, cl_args: str, build_dir: Path, log: typing.IO):
+    print('building clang.cpp...')
+    start_time = time.time()
+    src = PROJECT_DIR.joinpath('clang.cpp')
+    out = build_dir.joinpath('clang.obj')
+    command = f'{cl} "{src}" /Fo"{out}" {cl_args}'
+    cp = subprocess.run(command, capture_output=True)
+    log.write(str.encode(f'==== {src} ====\n'))
+    log.write(cp.stdout)
+    log.write(cp.stderr)
+    log.flush()
+    if cp.returncode != 0:
+        print('failed to build clang.cpp - see build log')
+        sys.exit(1)
     end_time = time.time()
-    print(f'AST generation finished after {end_time - start_time} seconds')
-    
-if __name__ == '__main__':
-    set_environment()
-    generate_ast()
+    print(f'clang.cpp build finished after {end_time - start_time} seconds')
+
+def update_commit_id(log: typing.IO):
+    print('updating commit id...')
+    start_time = time.time()
+    cp = subprocess.run('update_commit_id.bat', capture_output=True)
+    log.write(str.encode(f'==== update_commit_id.bat ====\n'))
+    log.write(cp.stdout)
+    log.write(cp.stderr)
+    log.flush()
+    if cp.returncode != 0:
+        print('failed to update commit id - see build log')
+        sys.exit(1)
+    end_time = time.time()
+    print(f'commit id update finished after {end_time - start_time} seconds')
+
+def build_pch(cl: str, cl_args: str, pch_path: Path, build_dir: Path, log: typing.IO):
+    print('building precompiled header...')
+    start_time = time.time()
+    pch_src = PROJECT_DIR.joinpath(PCH_CPP)
+    out = build_dir.joinpath(PCH_CPP).with_suffix('.obj')
+    command = f'{cl} "{pch_src}" /Fo"{out}" /Yc"{PCH_H}" /Fp"{pch_path}" {cl_args}'
+    cp = subprocess.run(command, capture_output=True)
+    log.write(str.encode(f'==== {pch_src} ====\n'))
+    log.write(cp.stdout)
+    log.write(cp.stderr)
+    log.flush()
+    if cp.returncode != 0:
+        print('failed to build precompiled header - see build log')
+        sys.exit(1)
+    end_time = time.time()
+    print(f'precompiled header build finished after {end_time - start_time} seconds')
+
+def build_cpps(cl: str, cl_args: str, pch_path: Path, build_dir: Path, log: typing.IO):
+    print('building cpps...')
+    start_time = time.time()
+    build_tasks = TaskMan()
+    logs: dict[Path, typing.IO] = {}
+    try:
+        for cpp in CPP:
+            cpp_src = PROJECT_DIR.joinpath(cpp)
+            cpp_log = tempfile.TemporaryFile()
+            logs[cpp_src] = cpp_log
+            out = build_dir.joinpath(cpp).with_suffix('.obj')
+            command = f'{cl} "{cpp_src}" /Fo"{out}" /Yu"{PCH_H}" /Fp"{pch_path}" {cl_args}'
+            build_tasks.spawn(command, log=cpp_log)
+        build_results = build_tasks.wait()
+        for cpp_src, cpp_log in logs.items():
+            cpp_log.seek(0, 0)
+            contents = cpp_log.read()
+            log.write(str.encode(f'==== {cpp_src} ====\n'))
+            log.write(contents)
+            del cpp_log
+        log.flush()
+        failed = 0
+        for result in build_results:
+            if result.returncode != 0:
+                failed += 1
+        if failed != 0:
+            print(f'{failed} cpp(s) failed to build - see build log')
+            sys.exit(1)
+        end_time = time.time()
+        print(f'cpps build finished after {end_time - start_time} seconds')
+    finally:
+       del logs
+
+def link_dll(link: str, link_args: list[str], build_dir: Path, out_dir: Path, log: typing.IO):
+    print('linking dll...')
+    start_time = time.time()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    link_response_file_name = build_dir.joinpath('link.rsp')
+    with open(link_response_file_name, 'w') as link_response_file:
+        out_exe = out_dir.joinpath(f'{CORE_DLL}.exe')
+        out_pdb = out_dir.joinpath(f'{CORE_DLL}.pdb')
+        link_response_file.write(f'/OUT:"{out_exe}"\n/PDB:"{out_pdb}"\n')
+        link_response_file.write('\n'.join(link_args) + '\n')
+        for lib_path in LIB_PATHS:
+            link_response_file.write(f'/LIBPATH:"{lib_path}"\n')
+        for lib in LIBS:
+            lib_path = PROJECT_DIR.joinpath(lib)
+            if not lib_path.exists():
+                log.write(f'Warning: Library file "{lib_path}" does not exist.\n'.encode())
+            link_response_file.write(f'"{lib_path}"\n')
+        for default_lib in DEFAULT_LIBS:
+            link_response_file.write(f'{default_lib}\n')
+        clang_obj = build_dir.joinpath('clang.obj')
+        pch_obj = build_dir.joinpath(PCH_CPP).with_suffix('.obj')
+        link_response_file.write(f'"{clang_obj}"\n"{pch_obj}"\n')
+        for cpp in CPP:
+            cpp_obj = build_dir.joinpath(cpp).with_suffix('.obj')
+            if not cpp_obj.exists():
+                log.write(f'Warning: Object file "{cpp_obj}" does not exist.\n'.encode())
+            link_response_file.write(f'"{cpp_obj}"\n')
+    command = f'{link} @"{link_response_file_name}"'
+    log.write(f'Linking command: {command}\n'.encode())
+    cp = subprocess.run(command, capture_output=True)
+    log.write(str.encode(f'==== {CORE_DLL}.dll ====\n'))
+    log.write(cp.stdout)
+    log.write(cp.stderr)
+    log.flush()
+    end_time = time.time()
+    if cp.returncode != 0:
+        print('linking dll failed - see build log')
+        log.write(f'Linking failed with return code {cp.returncode}\n'.encode())
+        sys.exit(1)
+    print(f'linking dll finished after {end_time - start_time} seconds')
+
+set_environment(SDK_VERSION)
+print_environment()
+
+arg_parser = argparse.ArgumentParser(description='Build VP.')
+arg_parser.add_argument('--config', type=str, default='debug', choices=['release', 'debug'])
+args = arg_parser.parse_args()
+config = Config.Release if args.config == 'release' else Config.Debug
+
+cl = 'clang-cl.exe'
+link = 'lld-link.exe'
+build_dir = PROJECT_DIR.joinpath(BUILD_DIR[config])
+out_dir = PROJECT_DIR.joinpath(PROJECT_DIR, OUT_DIR[config])
+cl_args = ' '.join(build_cl_config_args(config))
+link_args = build_link_config_args(config)
+pch_path = os.path.join(build_dir, PCH)
+prepare_dirs(build_dir, out_dir)
+
+log = open(out_dir.joinpath('build.log'), mode='w+b')
+try:
+    update_commit_id(log)
+    build_clang_cpp(cl, cl_args, build_dir, log)
+    build_pch(cl, cl_args, pch_path, build_dir, log)
+    build_cpps(cl, cl_args, pch_path, build_dir, log)
+    link_dll(link, link_args, build_dir, out_dir, log)
+finally:
+    log.close()

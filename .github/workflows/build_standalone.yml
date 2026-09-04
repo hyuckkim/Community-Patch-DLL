@@ -49,11 +49,16 @@ jobs:
       - name: Clang version check
         run: clang --version
         
-      - name: Run AST generation
-        run: python build_vp_clang_sdk_standalone.py --config debug
-        
-      - name: Create AST artifact
+      - name: Run standalone
+        run: python build_vp_clang_standalone.py --config debug
+
+      - name: Check output
+        shell: cmd
+        run: |
+          dir clang-output\Debug
+
+      - name: Create debug artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VP_AST_Debug_${{ needs.get-version.outputs.version }}
-          path: 'clang-build\Debug\ast'   # ← AST가 생성되는 디렉터리
+          name: VP_Clang_Debug_${{ needs.get-version.outputs.version }}
+          path: 'clang-output\Debug'
