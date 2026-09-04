@@ -1,4 +1,4 @@
-name: Build
+name: Build-VP
 on:
   workflow_run:
     workflows: ["Build-Setup"]
@@ -6,16 +6,7 @@ on:
   workflow_dispatch:
   
   build-clang:
-    needs: [get-version, detect-changes, setup]
-    if: |
-      always() && needs.setup.result == 'success' &&
-      (startsWith(github.ref, 'refs/tags/Release-') ||
-       github.event_name == 'workflow_dispatch' ||
-       (needs.detect-changes.result == 'success' && 
-        (needs.detect-changes.outputs.dll-source == 'true' || 
-         needs.detect-changes.outputs.build-scripts == 'true' || 
-         needs.detect-changes.outputs.workflow == 'true' || 
-         needs.detect-changes.outputs.dependencies == 'true')))
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: windows-2022
     steps:
       - name: Checkout code
@@ -240,16 +231,7 @@ on:
           path: 'clang-output\Release'
 
   build-msvc:
-    needs: [get-version, detect-changes, setup]
-    if: |
-      always() && needs.setup.result == 'success' &&
-      (startsWith(github.ref, 'refs/tags/Release-') ||
-       github.event_name == 'workflow_dispatch' ||
-       (needs.detect-changes.result == 'success' && 
-        (needs.detect-changes.outputs.dll-source == 'true' || 
-         needs.detect-changes.outputs.build-scripts == 'true' || 
-         needs.detect-changes.outputs.workflow == 'true' || 
-         needs.detect-changes.outputs.dependencies == 'true')))
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: windows-2022
     steps:
       - name: Checkout code
