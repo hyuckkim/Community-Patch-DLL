@@ -1,3 +1,5 @@
+#include "CvGameCoreDLLPCH.h"
+
 #include "FDataStream.h"
 #include "FEndian.h"
 

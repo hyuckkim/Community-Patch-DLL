@@ -1,3 +1,5 @@
+#include "CvGameCoreDLLPCH.h"
+
 #include "FFileStream.h"
 #include "FFileSystem.h"
 #include "FFileDefines.h"
