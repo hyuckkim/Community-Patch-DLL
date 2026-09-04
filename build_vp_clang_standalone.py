@@ -36,7 +36,7 @@ LIBS = [
     'CvGameCoreDLLUtil\\lib\\CvGameCoreDLLUtilWin32.lib',
     'CvLocalization\\lib\\CvLocalizationWin32.lib',
     'CvGameDatabase\\lib\\CvGameDatabaseWin32.lib',
-    'FirePlace\\lib\\FireWorksWin32.obj',
+    'FirePlace\\lib\\FireWorksWin32.lib',
     'FirePlace\\lib\\FLuaWin32.lib',
     'ThirdPartyLibs\\Lua51\\lib\\lua51_Win32.lib',
 ]
