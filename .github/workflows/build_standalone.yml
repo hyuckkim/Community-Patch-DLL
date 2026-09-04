@@ -51,9 +51,6 @@ jobs:
         
       - name: Run AST generation
         run: python build_vp_clang_sdk_standalone.py --config debug
-
-      - name: Display AST generation log
-        run: cat clang-build\Debug\ast\build.log
         
       - name: Create AST artifact
         uses: actions/upload-artifact@v4
